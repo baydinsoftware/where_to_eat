@@ -1,0 +1,25 @@
+<h1 align="center">Create new ballot</h1>
+
+<form action="{% url 'where_to_eat:create_ballot_submit' %}" method="post">
+{% csrf_token %}
+
+<h3>Voting style</h3>
+<input type="radio" name="voting_system" value="plurality_voting" id="plurality_voting" checked required>
+<label for="plurality_voting">
+Plurality voting
+<i><font color="gray">
+(the restaurant with the most votes wins)
+</font></i>
+</label><br/>
+
+<input type="radio" name="voting_system" value="probabilistic_voting" id="probabilistic_voting" >
+<label for="probabilistic_voting">
+Probabilistic voting
+<i><font color="gray">
+(a restaurant's chance of winning is proportional to its number of votes)
+</font></i>
+</label><br/>
+
+<br/>
+<input type="submit" value="Submit" />
+</form>

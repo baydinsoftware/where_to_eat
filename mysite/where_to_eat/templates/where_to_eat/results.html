@@ -1,0 +1,50 @@
+<h1 align="center">Ballot results {{ ballot.date }}</h1>
+<p align="center">Voting system:
+{% if ballot.voting_method == "plurality_voting" %}
+    Plurality voting
+{% elif ballot.voting_method == "probabilistic_voting" %}
+    Probabilistic voting
+{% endif %}
+</p>
+
+<p align="center">
+{% if winners|length == 0 %}
+    No votes have been cast yet.
+{% elif winners|length == 1 %}
+    <font color="green" size="7"><b>Winner: {{ winners.0 }}</b></font>
+{% else %}
+    <font color="red" size="7">There was a tie between
+    {% for winner in winners %}
+        {% if forloop.last %}and
+        {% elif not forloop.first %},
+        {% endif %}
+        {{ winner }}
+    {% endfor %}
+    .</b></font>
+{% endif %}
+</p>
+
+
+<table border="1" align="center">
+<tr>
+<th>Restaurant</th><th># Votes</th>
+</tr>
+
+{% for restaurant in sorted_by_votes %}
+    <tr>
+    <td>{{ restaurant.0 }}</td><td>{{ restaurant.1 }}</td>
+    </tr>
+{% endfor %}
+</table>
+
+<p>
+<table border="0" align="center">
+<center>
+<tr><th><u><font size="5">Voters:</u></font></th></tr> 
+<td><ul>
+{% for voter in voters %}
+    <li>{{ voter }}
+{% endfor %}
+</ul></td>
+</center>
+</p>

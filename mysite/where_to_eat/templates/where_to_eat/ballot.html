@@ -1,0 +1,174 @@
+<script src='http://code.jquery.com/jquery-1.8.3.js'></script>
+<script>
+    
+    /*
+     * Adds a new restaurant to the displayed list.
+     */
+    function add_list_item(restaurant_name) {
+    	var $new_item = $( "<li><input type='button' class='add_vote' value='+'> <input type='button' class='remove_vote' value='-'> <b class='num_votes'>0</b> - <font class='restaurant_option'>" + restaurant_name + "</font></li>" );
+        $( "#restaurant_list" ).append( $new_item );
+  	    $( ".add_vote" ).last().click(click_add_button);
+  	    $( ".remove_vote" ).last().click(click_remove_button);
+    }
+    
+    /*
+     * Adds a new restaurant to the database and to the displayed list.
+     */
+    function add_restaurant(restaurant_name) {
+        $.ajax ({
+            type: 'POST',
+			dataType: 'json',
+			url: "{% url 'where_to_eat:add_ballot_option' ballot.id %}",
+			data: {restaurant_name : restaurant_name},
+			success: function (data) {
+                add_list_item(restaurant_name);
+			},
+			
+			error: function() {
+			    alert('Error adding restaurant :(')
+			}
+		});
+    }
+    
+    function submit_ballot() {
+        var submit_data = {'username': '{{ username }}'};
+        for (var i = 0; i < $( ".restaurant_option" ).length; i++) {
+            var $restaurant = $( ".restaurant_option" ).eq(i);
+            var num_votes = $restaurant.siblings( ".num_votes" ).text();
+            submit_data["restaurant:" + $restaurant.text()] = num_votes;
+        }
+        
+        $.ajax ({
+            type: 'POST',
+            dataType: 'json',
+            url: "{% url 'where_to_eat:submit_ballot' ballot.id %}",
+            data: submit_data,
+            success: function (data) {
+                if (data['already_submitted']) {
+                    $( "#already_voted" ).show(); 
+                } else {
+                    window.location.href = "{% url 'where_to_eat:results' ballot.id %}";
+                }
+            },
+            error: function () {
+                alert("Error sending votes :(");
+            }
+        });
+    }
+    
+    /*
+     * Requests a list of all the added restaurants and adds any new
+     * ones to the displayed list.
+     */
+    function update_restaurants() { 
+        $.ajax({
+            type: 'GET',
+            dataType: 'json',
+            url: "{% url 'where_to_eat:get_ballot_options' ballot.id %}",
+            data: {},
+            success: function (data) {
+                for (var i = 0; i < data['restaurants'].length; i++) {
+                    var restaurant_name = data['restaurants'][i];
+                    var already_there = false;
+                    
+                    for (var j = 0; j < $( ".restaurant_option" ).length; j++) {
+                        var existing_option = $( ".restaurant_option" ).eq(j).text();
+                        if ( restaurant_name === existing_option ) {
+                            already_there = true;
+                            break;
+                        }
+                    }
+                    
+                    if ( !already_there ) {
+                        add_list_item( restaurant_name );
+                    }
+                }
+            },
+            
+            error: function() {
+                alert('Error retrieving restaurants :(')
+            }
+        });
+  	}
+    
+    /*
+     * Function that's called when a '+' button is clicked.
+     */
+    function click_add_button() {
+        var $remaining = $( "#remaining_votes" );
+      	        
+        // if there are remaining votes, add a vote to corresponding label
+        if ( Number($remaining.text()) > 0 ) {
+            var $num_votes = $(this).siblings( ".num_votes" );
+                    
+            $num_votes.text( Number($num_votes.text()) + 1 );
+            $remaining.text( Number($remaining.text()) - 1 );
+        }
+    }
+    
+    /*
+     * Function that's called when a '-' button is clicked.
+     */
+    function click_remove_button() {
+        var $num_votes = $(this).siblings( ".num_votes" );
+        
+        // if corresponding label has votes, remove one
+        if ( Number($num_votes.text()) > 0) {
+            var $remaining = $( "#remaining_votes" );
+
+            $num_votes.text( Number($num_votes.text()) - 1 );
+            $remaining.text( Number($remaining.text()) + 1 );
+        }
+    }
+    
+  	$(document).ready(function () {
+  	
+  	    $( "#add_restaurant" )
+  	        .click(function(){
+  	            if ( $( "#restaurant_name" ).val() ) {
+  	                add_restaurant( $( "#restaurant_name" ).val() );
+  	                $( "#restaurant_name" ).val("");
+  	            }
+  	        });
+  	
+  	    $( ".add_vote" ).click(click_add_button);
+        
+  	    $( ".remove_vote" ).click(click_remove_button);
+  	    
+  	    $( "#submit_ballot" ).click(submit_ballot);
+
+        // repeatedly check for updated restaurants
+        update_restaurants();
+  	    setInterval(update_restaurants, 2000);
+
+    })
+    
+</script>
+
+<h1 align="center">{{ ballot.date }}</h1>
+
+<p align="center">
+<font size=4>
+    Signed in as <b>{{ username }}</b> <br />
+    Available votes: <b id="remaining_votes">10</b>
+    <font id="already_voted" color="red" hidden><br/><b>You already voted on this ballot.</b></font>
+</font>
+</p>
+
+<form method="POST">
+{% csrf_token %}
+
+<input style="display:none" name="username" value="{{ username }}">
+
+
+<input type="text" id="restaurant_name" />
+<input type="button" id="add_restaurant" value="Add restaurant" />
+
+<br/>
+<br/>
+<u1 id="restaurant_list"></u1>
+<br/>
+
+<input type="button" id="submit_ballot" value="Submit ballot" />
+
+</form>

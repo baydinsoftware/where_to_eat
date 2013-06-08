@@ -1,0 +1,168 @@
+from django.shortcuts import render, get_object_or_404
+from django.utils import timezone
+from django.core.urlresolvers import reverse
+from django.http import HttpResponseRedirect, HttpResponse
+from django.core.exceptions import ObjectDoesNotExist
+
+import simplejson
+import random
+
+from django.views.decorators.csrf import csrf_exempt
+
+from where_to_eat.models import Ballot, Restaurant, Voter
+
+def index(request):
+    ballot_list = Ballot.objects.order_by('-date')
+    context = {'ballot_list': ballot_list}
+    return render(request, 'where_to_eat/index.html', context)
+    
+def create_ballot(request):
+    return render(request, 'where_to_eat/create_ballot.html', {})
+
+def create_ballot_submit(request):
+    b = Ballot(date=timezone.now())
+    b.voting_method = request.POST['voting_system']
+    b.save()
+    return HttpResponseRedirect(reverse('where_to_eat:index'))
+
+def delete_confirmation(request, ballot_id):
+    ballot = get_object_or_404(Ballot, pk=ballot_id)
+    return render(request, 'where_to_eat/delete_confirmation.html', {'ballot': ballot})
+
+def delete_ballot(request, ballot_id):
+    ballot = get_object_or_404(Ballot, pk=ballot_id)
+    ballot.delete()
+    return HttpResponseRedirect(reverse('where_to_eat:index'))
+
+def sign_in(request, ballot_id):
+    ballot = get_object_or_404(Ballot, pk=ballot_id)
+    return render(request, 'where_to_eat/sign_in.html', {'ballot': ballot})
+
+
+def ballot(request, ballot_id):
+    ballot = get_object_or_404(Ballot, pk=ballot_id)
+    
+    try:
+        username = request.POST['username']        
+        context = {'ballot': ballot, 'username': username}
+        return render(request, 'where_to_eat/ballot.html', context)
+        
+    # redirect to sign in page if they didn't just sign in
+    except (KeyError, Voter.DoesNotExist):
+        return HttpResponseRedirect(reverse('where_to_eat:sign_in', args=(ballot_id,)))
+
+@csrf_exempt
+def add_ballot_option(request, ballot_id):
+    ballot = get_object_or_404(Ballot, pk=ballot_id)
+    
+    response = {'repeat': False}
+    
+    try:
+        restaurant_name = request.POST['restaurant_name']
+        if ballot.restaurant_set.filter(name=restaurant_name).count() == 0:
+            ballot.restaurant_set.create(name=restaurant_name)
+        else:
+            response['repeat'] = True
+    except (KeyError):
+        pass
+    
+    return HttpResponse(simplejson.dumps(response), content_type='application/json')
+
+
+def get_ballot_options(request, ballot_id):
+    ballot = get_object_or_404(Ballot, pk=ballot_id)
+    response = {'restaurants': []}
+    for restaurant in ballot.restaurant_set.all():
+        response['restaurants'].append(restaurant.name)
+    return HttpResponse(simplejson.dumps(response), content_type='application/json')
+
+@csrf_exempt
+def submit_ballot(request, ballot_id):
+    ballot = get_object_or_404(Ballot, pk=ballot_id)
+    
+    response = {'already_submitted': False}
+    
+    try:
+        username = request.POST['username']
+        
+        # if ballot already has a voter of the same name, do not count
+        if ballot.voter_set.filter(name=username).count() == 1:
+            response['already_submitted'] = True
+            
+        # otherwise, adjust database
+        else:
+            voter = ballot.voter_set.create(name=username)
+            
+            for item in request.POST:
+                # restaurant POST data will start with 'restaurant:'
+                if item.startswith('restaurant:'):
+                    restaurant_name = item.replace('restaurant:', '', 1)
+                    votes = int(request.POST[item])
+                    restaurant = ballot.restaurant_set.get(name=restaurant_name)
+                    restaurant.votes += votes
+                    restaurant.save()
+                    voter.votes_submitted += votes
+
+            voter.save()      
+                
+            if voter.votes_submitted > 0 and ballot.voting_method == 'probabilistic_voting':
+                save_new_probabilistic_winner(ballot)
+    
+    # if there's no POST data, redirect to sign-in page
+    except (KeyError):
+        return HttpResponseRedirect(reverse('where_to_eat:sign_in', args=(ballot_id,)))
+
+    return HttpResponse(simplejson.dumps(response), content_type='application/json')
+
+def save_new_probabilistic_winner(ballot):
+    total_votes = 0
+    for restaurant in ballot.restaurant_set.all():
+        total_votes += restaurant.votes
+    
+    if total_votes > 0:
+        r = random.randint(1, total_votes)
+        votes = 0
+        for restaurant in ballot.restaurant_set.all():
+            votes += restaurant.votes
+            if r <= votes:
+                ballot.winner = restaurant.name
+                ballot.save()
+                break
+    
+
+def results(request, ballot_id):
+    ballot = get_object_or_404(Ballot, pk=ballot_id)
+    
+    total_votes = {} # dictionary with mappings like {'Chipotle', 5}
+    for restaurant in ballot.restaurant_set.all():
+        total_votes[restaurant.name] = restaurant.votes
+    
+    # sorted list of tuples, e.g. [('Chipotle', 5), ('Pizza Hut', 4)]
+    sorted_by_votes = sorted(total_votes, key=total_votes.get, reverse=True)
+    for i in range(len(sorted_by_votes)):
+        sorted_by_votes[i] = (sorted_by_votes[i], total_votes[sorted_by_votes[i]])
+    
+    voters = [] # list of all voters
+    for voter in ballot.voter_set.all():
+        voters.append(voter.name)
+    
+    winners = []
+    
+    if ballot.voting_method == 'plurality_voting':
+        for restaurant in sorted_by_votes:
+            if restaurant[1] == sorted_by_votes[0][1]:
+                winners.append(restaurant[0])
+            else:
+                break
+    
+    elif ballot.voting_method == 'probabilistic_voting' and ballot.winner != '':
+        winners.append(ballot.winner)
+    
+    context = {
+        'ballot': ballot,
+        'winners': winners,
+        'sorted_by_votes': sorted_by_votes,
+        'voters': voters,
+    }
+    
+    return render(request, 'where_to_eat/results.html', context)

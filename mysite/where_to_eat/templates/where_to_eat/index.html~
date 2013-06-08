@@ -1,0 +1,19 @@
+<h1 align="center">Restaurant Ballots</h1>
+
+<form action="{% url 'where_to_eat:create_ballot' %}">
+<input type="submit" value="Create new ballot" />
+</form>
+
+{% if ballot_list %}
+    <u1>
+    {% for ballot in ballot_list %}
+        <li>
+            <a href="{% url 'where_to_eat:sign_in' ballot.id %}">{{ ballot.date }}</a>
+            <a href="{% url 'where_to_eat:results' ballot.id %}">[Results]</a>
+            <a href="{% url 'where_to_eat:delete_confirmation' ballot.id %}">[x]</a>
+        </li>
+    {% endfor %}
+    </u1>
+{% else %}
+    <p>No ballots are available.</p>
+{% endif %}

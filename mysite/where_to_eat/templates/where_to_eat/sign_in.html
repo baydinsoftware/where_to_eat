@@ -1,0 +1,10 @@
+<h1 align="center">Sign in to vote on this restaurant ballot</h1>
+
+
+<form action="{% url 'where_to_eat:ballot' ballot.id %}" method="post">
+{% csrf_token %}
+
+<input align="center" type="text" name="username"><br />
+<input align="center" type="submit" value="Sign in" />
+
+</form>
